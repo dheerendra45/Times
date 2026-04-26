@@ -70,6 +70,16 @@ app.include_router(analytics.router)
 app.include_router(genai.router)
 
 
+@app.get("/")
+async def root():
+    """Root endpoint for uptime checks and quick verification."""
+    return {
+        "status": "ok",
+        "service": "hackathon-portal-api",
+        "health": "/api/health",
+    }
+
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
