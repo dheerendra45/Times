@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,19 +11,33 @@ from app.redis_client import connect_redis, close_redis
 from app.routes import projects, analytics, genai
 
 
+async def _warmup_faiss_index() -> None:
+    """Build FAISS index in the background so startup stays fast."""
+    try:
+        from app.services.genai_service import build_faiss_index
+
+        await build_faiss_index()
+    except Exception as e:
+        print(f"⚠️  FAISS background warmup skipped: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle events."""
     # ── Startup ──
-    await connect_db()
+    db_ready = False
+    try:
+        await asyncio.wait_for(connect_db(), timeout=12)
+        db_ready = True
+    except Exception as e:
+        # Do not block boot on external DB issues; service can still come up.
+        print(f"⚠️  MongoDB startup skipped: {e}")
+
     await connect_redis()  # optional — warns and continues if unavailable
 
-    # Build FAISS index on startup (non-blocking if no data)
-    try:
-        from app.services.genai_service import build_faiss_index
-        await build_faiss_index()
-    except Exception as e:
-        print(f"⚠️  FAISS index build skipped: {e}")
+    # Warm FAISS asynchronously so startup can complete and bind port quickly.
+    if db_ready:
+        asyncio.create_task(_warmup_faiss_index())
 
     print("🚀 Hackathon Portal API is ready")
     yield
