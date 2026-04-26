@@ -1,5 +1,15 @@
 import { create } from "zustand";
 
+const rawBaseURL = (
+  import.meta.env.VITE_API_BASE_URL || "https://times-1vx0.onrender.com"
+).trim();
+const sanitizedBaseURL = rawBaseURL?.replace(/\/+$/, "");
+const apiBaseURL = sanitizedBaseURL
+  ? sanitizedBaseURL.endsWith("/api")
+    ? sanitizedBaseURL
+    : `${sanitizedBaseURL}/api`
+  : "https://times-1vx0.onrender.com/api";
+
 export const useChatStore = create((set, get) => ({
   messages: [],
   isStreaming: false,
@@ -50,7 +60,7 @@ export const useChatStore = create((set, get) => ({
     set({ isStreaming: true, error: null });
 
     try {
-      const response = await fetch("/api/genai/chat", {
+      const response = await fetch(`${apiBaseURL}/genai/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -106,7 +116,7 @@ export const useChatStore = create((set, get) => ({
   fetchSuggestions: async (projectId = null) => {
     try {
       const params = projectId ? `?project_id=${projectId}` : "";
-      const response = await fetch(`/api/genai/suggestions${params}`, {
+      const response = await fetch(`${apiBaseURL}/genai/suggestions${params}`, {
         credentials: "include",
       });
       if (response.ok) {
