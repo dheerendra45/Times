@@ -35,8 +35,8 @@ async def lifespan(app: FastAPI):
 
     await connect_redis()  # optional — warns and continues if unavailable
 
-    # Warm FAISS asynchronously so startup can complete and bind port quickly.
-    if db_ready:
+    # Warm FAISS only when explicitly enabled (disabled by default on low-memory hosts).
+    if db_ready and settings.ENABLE_FAISS_WARMUP:
         asyncio.create_task(_warmup_faiss_index())
 
     print("🚀 Hackathon Portal API is ready")
