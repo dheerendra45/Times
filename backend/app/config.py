@@ -13,8 +13,8 @@ class Settings:
     MONGO_URI_FULL: str = os.getenv("MONGO_URI", "")
     
     # Option 2: Build URI from components (for local dev)
-    MONGO_USER: str = os.getenv("MONGO_USER", "hackathon_admin")
-    MONGO_PASSWORD: str = os.getenv("MONGO_PASSWORD", "hackathon_secret_2024")
+    MONGO_USER: str = os.getenv("MONGO_USER", "admin")
+    MONGO_PASSWORD: str = os.getenv("MONGO_PASSWORD", "")
     MONGO_HOST: str = os.getenv("MONGO_HOST", "localhost")
     MONGO_PORT: int = int(os.getenv("MONGO_PORT", "27017"))
     MONGO_DB: str = os.getenv("MONGO_DB", "hackathon_portal")
@@ -32,8 +32,11 @@ class Settings:
 
 
 
+    # ─── Redis (optional — leave blank to disable caching/sessions/rate-limits) ───
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+
     # ─── JWT ───
-    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))

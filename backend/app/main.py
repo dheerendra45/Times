@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import connect_db, close_db
+from app.redis_client import connect_redis, close_redis
 from app.routes import projects, analytics, genai
 
 
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle events."""
     # ── Startup ──
     await connect_db()
+    await connect_redis()  # optional — warns and continues if unavailable
 
     # Build FAISS index on startup (non-blocking if no data)
     try:
@@ -27,6 +29,7 @@ async def lifespan(app: FastAPI):
 
     # ── Shutdown ──
     await close_db()
+    await close_redis()
     print("👋 Hackathon Portal API shut down")
 
 
