@@ -66,7 +66,16 @@ async def build_faiss_index() -> int:
     Build or rebuild the FAISS index from all projects in MongoDB.
     Returns the number of indexed projects.
     """
-    import faiss
+    # Skip if FAISS dependencies not available
+    if not NUMPY_AVAILABLE:
+        print("⚠️  FAISS disabled (numpy not available)")
+        return 0
+    
+    try:
+        import faiss
+    except ImportError:
+        print("⚠️  FAISS disabled (faiss-cpu not installed)")
+        return 0
 
     global _faiss_index, _project_ids, _project_texts
 
@@ -97,6 +106,10 @@ async def build_faiss_index() -> int:
     # Run embedding in a thread pool to avoid blocking
     loop = asyncio.get_event_loop()
     embeddings = await loop.run_in_executor(None, _embed_texts, texts)
+    
+    if embeddings is None:
+        print("⚠️  Embeddings failed (sentence-transformers not available)")
+        return 0
 
     dim = embeddings.shape[1]
     index = faiss.IndexFlatIP(dim)  # Inner product (cosine with normalized vectors)
@@ -119,11 +132,18 @@ async def build_faiss_index() -> int:
 
 async def _ensure_faiss_ready() -> None:
     """Load FAISS index/metadata from disk or rebuild if needed."""
-    import faiss
-
     global _faiss_index, _project_ids, _project_texts
 
     if _faiss_index is not None and _project_ids and _project_texts:
+        return
+    
+    # Check if FAISS is available
+    if not NUMPY_AVAILABLE:
+        return
+    
+    try:
+        import faiss
+    except ImportError:
         return
 
     metadata_path = _faiss_metadata_path()
@@ -159,8 +179,16 @@ async def search_similar_projects(query: str, top_k: int = 5) -> list[dict]:
     if settings.USE_SIMPLE_SEARCH:
         return await _simple_text_search(query, top_k)
     
-    # Otherwise use FAISS vector search
-    import faiss
+    # Otherwise use FAISS vector search (requires numpy and faiss-cpu)
+    if not NUMPY_AVAILABLE:
+        print("⚠️  FAISS unavailable, falling back to simple search")
+        return await _simple_text_search(query, top_k)
+    
+    try:
+        import faiss
+    except ImportError:
+        print("⚠️  faiss-cpu not installed, falling back to simple search")
+        return await _simple_text_search(query, top_k)
 
     await _ensure_faiss_ready()
 

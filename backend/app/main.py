@@ -35,11 +35,16 @@ async def lifespan(app: FastAPI):
 
     await connect_redis()  # optional — warns and continues if unavailable
 
-    # FAISS warmup: Skip on low-memory environments (Render free tier)
-    # The index will be built lazily on first chat request instead
-    if db_ready and settings.ENABLE_FAISS_WARMUP:
-        print("⚠️  FAISS warmup skipped to save memory on free tier")
-        print("💡 Index will build on-demand during first chat request")
+    # FAISS warmup: Only on local dev with enough memory
+    # On Render free tier (512MB), USE_SIMPLE_SEARCH=true skips FAISS entirely
+    if db_ready and settings.ENABLE_FAISS_WARMUP and not settings.USE_SIMPLE_SEARCH:
+        try:
+            print("🔨 Building FAISS index on startup...")
+            from app.services.genai_service import build_faiss_index
+            await build_faiss_index()
+            print("✅ FAISS index ready")
+        except Exception as e:
+            print(f"⚠️  FAISS warmup failed (will build on-demand): {e}")
 
     print("🚀 Hackathon Portal API is ready")
     yield
