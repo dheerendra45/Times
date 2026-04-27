@@ -13,6 +13,8 @@ import {
   HiMiniStop,
   HiOutlineClock,
   HiOutlineChevronLeft,
+  HiOutlinePlus,
+  HiOutlineChatBubbleLeftRight,
 } from "react-icons/hi2";
 
 function TypingIndicator() {
@@ -54,6 +56,8 @@ export default function GenAIChat() {
     fetchChatSessions,
     loadChatSession,
     deleteChatSession,
+    stopStreaming,
+    startNewChat,
   } = useChatStore();
   const { currentProject, fetchProjectById } = useProjectStore();
   const { accessToken, isAuthenticated } = useAuthStore();
@@ -91,6 +95,22 @@ export default function GenAIChat() {
       context = `Title: ${currentProject.title}\nProblem: ${currentProject.problem_statement}\nSolution: ${currentProject.solution}\nTech: ${currentProject.tech_stack?.join(", ")}`;
     }
     await sendMessage(query, context, projectId, accessToken);
+
+    // Refresh chat sessions after message is sent (delayed to ensure DB is updated)
+    setTimeout(() => {
+      if (isAuthenticated && accessToken) {
+        fetchChatSessions(projectId, accessToken);
+      }
+    }, 1000);
+  };
+
+  const handleStop = () => {
+    stopStreaming();
+  };
+
+  const handleNewChat = () => {
+    startNewChat();
+    setShowHistory(false);
   };
 
   const handleKeyDown = (e) => {
@@ -114,6 +134,8 @@ export default function GenAIChat() {
     e.stopPropagation();
     if (confirm("Delete this chat session?")) {
       await deleteChatSession(sessionId, accessToken);
+      // Refresh sessions list after deletion
+      await fetchChatSessions(projectId, accessToken);
     }
   };
 
@@ -125,47 +147,73 @@ export default function GenAIChat() {
     <div className="flex h-[calc(100vh-4rem)]">
       {/* Chat History Sidebar */}
       {showHistory && (
-        <div className="w-80 border-r border-gray-200 bg-white overflow-y-auto">
-          <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
-            <h3 className="font-bold text-gray-900">Chat History</h3>
+        <div className="w-80 border-r border-gray-200 bg-gray-50 overflow-y-auto flex flex-col">
+          <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900">Chat History</h3>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <HiOutlineChevronLeft className="w-5 h-5" />
+              </button>
+            </div>
             <button
-              onClick={() => setShowHistory(false)}
-              className="p-2 rounded-lg hover:bg-gray-100"
+              onClick={handleNewChat}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-primary-600 to-purple-600 text-white font-semibold hover:shadow-lg transition-all"
             >
-              <HiOutlineChevronLeft className="w-5 h-5" />
+              <HiOutlinePlus className="w-5 h-5" />
+              New Chat
             </button>
           </div>
-          <div className="p-4 space-y-2">
+          <div className="flex-1 p-4 space-y-2">
             {loadingSessions && (
-              <div className="text-center text-gray-500 py-4">Loading...</div>
+              <div className="text-center text-gray-500 py-8">
+                <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                Loading...
+              </div>
             )}
             {!loadingSessions && chatSessions.length === 0 && (
-              <div className="text-center text-gray-500 py-4">
-                No chat history yet
+              <div className="text-center text-gray-500 py-8">
+                <HiOutlineChatBubbleLeftRight className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No chat history yet</p>
+                <p className="text-xs mt-1">
+                  Start a conversation to see it here
+                </p>
               </div>
             )}
             {chatSessions.map((session) => (
               <div
                 key={session.id}
                 onClick={() => handleLoadSession(session.id)}
-                className="group p-3 rounded-lg border border-gray-200 hover:border-primary-400 hover:bg-primary-50 cursor-pointer transition-all"
+                className="group p-3 rounded-xl border border-gray-200 bg-white hover:border-primary-400 hover:bg-primary-50 cursor-pointer transition-all hover:shadow-md"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
                       {session.title || session.preview || "Untitled Chat"}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {session.message_count} messages
+                      {session.message_count}{" "}
+                      {session.message_count === 1 ? "message" : "messages"}
                     </p>
                     <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                       <HiOutlineClock className="w-3 h-3" />
-                      {new Date(session.updated_at).toLocaleDateString()}
+                      {new Date(session.updated_at).toLocaleDateString(
+                        undefined,
+                        {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        },
+                      )}
                     </p>
                   </div>
                   <button
                     onClick={(e) => handleDeleteSession(session.id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-rose-100 text-gray-400 hover:text-rose-600 transition-all"
+                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-100 text-gray-400 hover:text-rose-600 transition-all"
+                    title="Delete chat"
                   >
                     <HiOutlineTrash className="w-4 h-4" />
                   </button>
@@ -200,6 +248,24 @@ export default function GenAIChat() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                title="Chat history"
+                className={`p-2.5 rounded-xl transition-all ${
+                  showHistory
+                    ? "bg-primary-100 text-primary-700"
+                    : "text-gray-600 hover:text-primary-600 hover:bg-primary-50"
+                }`}
+              >
+                <HiOutlineChatBubbleLeftRight className="w-4.5 h-4.5" />
+              </button>
+              <button
+                onClick={handleNewChat}
+                title="New chat"
+                className="p-2.5 rounded-xl text-gray-600 hover:text-primary-600 hover:bg-primary-50 transition-all"
+              >
+                <HiOutlinePlus className="w-4.5 h-4.5" />
+              </button>
               {projectId && (
                 <Link
                   to={`/projects/${projectId}`}
@@ -345,9 +411,10 @@ export default function GenAIChat() {
                 </div>
               </div>
               <button
-                onClick={handleSend}
-                disabled={!input.trim() || isStreaming}
+                onClick={isStreaming ? handleStop : handleSend}
+                disabled={!isStreaming && !input.trim()}
                 id="chat-send"
+                title={isStreaming ? "Stop generating" : "Send message"}
                 className="relative h-[56px] w-[56px] p-0 flex items-center justify-center flex-shrink-0 rounded-2xl bg-gradient-to-br from-primary-600 via-purple-600 to-pink-600 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
               >
                 {isStreaming ? (

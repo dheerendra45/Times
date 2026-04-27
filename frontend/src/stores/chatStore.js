@@ -18,6 +18,7 @@ export const useChatStore = create((set, get) => ({
   currentSessionId: null,
   chatSessions: [],
   loadingSessions: false,
+  streamReader: null,
 
   addMessage: (message) => {
     set((state) => ({ messages: [...state.messages, message] }));
@@ -111,6 +112,9 @@ export const useChatStore = create((set, get) => ({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
+      // Store reader so we can cancel it
+      set({ streamReader: reader });
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -141,8 +145,26 @@ export const useChatStore = create((set, get) => ({
       // Update last assistant message with error indication
       get().updateLastAssistantMessage("\n\n*[Error: Failed to get response]*");
     } finally {
-      set({ isStreaming: false });
+      set({ isStreaming: false, streamReader: null });
     }
+  },
+
+  stopStreaming: () => {
+    const reader = get().streamReader;
+    if (reader) {
+      reader.cancel();
+      set({ isStreaming: false, streamReader: null });
+    }
+  },
+
+  startNewChat: () => {
+    set({
+      messages: [],
+      currentSessionId: null,
+      error: null,
+      isStreaming: false,
+      streamReader: null,
+    });
   },
 
   fetchSuggestions: async (projectId = null) => {
@@ -160,7 +182,19 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  clearChat: () => set({ messages: [], error: null, currentSessionId: null }),
+  clearChat: () => {
+    const reader = get().streamReader;
+    if (reader) {
+      reader.cancel();
+    }
+    set({
+      messages: [],
+      error: null,
+      currentSessionId: null,
+      isStreaming: false,
+      streamReader: null,
+    });
+  },
   clearError: () => set({ error: null }),
 
   // Chat history management
