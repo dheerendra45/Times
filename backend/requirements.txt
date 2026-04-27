@@ -8,10 +8,14 @@ pydantic==2.7.4
 pydantic[email]==2.7.4
 python-dotenv==1.0.1
 python-multipart==0.0.9
+# Sentence transformers - optional, only loaded if USE_SIMPLE_SEARCH=false
 sentence-transformers==3.0.0
+# FAISS - optional, only loaded if USE_SIMPLE_SEARCH=false
 faiss-cpu==1.13.0
 numpy==1.26.4
+# AI providers - only one is used based on LLM_PROVIDER
 google-generativeai==0.7.0
 openai==1.40.0
 httpx==0.27.2
+# Redis - optional
 redis[asyncio]==5.0.8

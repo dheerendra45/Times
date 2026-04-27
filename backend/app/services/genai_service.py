@@ -137,15 +137,21 @@ async def _ensure_faiss_ready() -> None:
 
 async def search_similar_projects(query: str, top_k: int = 5) -> list[dict]:
     """
-    Search for similar projects using FAISS.
+    Search for similar projects using FAISS or simple text search.
     Returns list of {project_id, text, score}.
     """
+    # Use simple MongoDB text search on low-memory deployments
+    if settings.USE_SIMPLE_SEARCH:
+        return await _simple_text_search(query, top_k)
+    
+    # Otherwise use FAISS vector search
     import faiss
 
     await _ensure_faiss_ready()
 
     if _faiss_index is None or len(_project_ids) == 0:
-        return []
+        # Fallback to simple search if FAISS fails
+        return await _simple_text_search(query, top_k)
 
     loop = asyncio.get_event_loop()
     query_vec = await loop.run_in_executor(None, _embed_text, query)
@@ -164,6 +170,57 @@ async def search_similar_projects(query: str, top_k: int = 5) -> list[dict]:
         })
 
     return results
+
+
+async def _simple_text_search(query: str, top_k: int = 5) -> list[dict]:
+    """
+    Simple MongoDB text search fallback for low-memory environments.
+    No embeddings or FAISS required.
+    """
+    from app.database import get_db
+    
+    db = get_db()
+    
+    # Search by keywords in title, problem, solution, domain
+    search_terms = query.lower().split()
+    
+    # Build a simple text query
+    projects = await db.projects.find().to_list(length=100)
+    
+    # Score projects based on keyword matches
+    scored_projects = []
+    for project in projects:
+        score = 0
+        text_fields = [
+            project.get('title', ''),
+            project.get('problem_statement', ''),
+            project.get('solution', ''),
+            project.get('domain', ''),
+            ' '.join(project.get('tech_stack', []))
+        ]
+        combined_text = ' '.join(text_fields).lower()
+        
+        for term in search_terms:
+            if term in combined_text:
+                score += combined_text.count(term)
+        
+        if score > 0:
+            combined = (
+                f"Title: {project['title']}\n"
+                f"Problem: {project.get('problem_statement', '')}\n"
+                f"Solution: {project.get('solution', '')}\n"
+                f"Tech Stack: {', '.join(project.get('tech_stack', []))}\n"
+                f"Domain: {project.get('domain', '')}"
+            )
+            scored_projects.append({
+                "project_id": str(project["_id"]),
+                "text": combined,
+                "score": min(score / 10.0, 1.0),  # Normalize score
+            })
+    
+    # Sort by score and return top_k
+    scored_projects.sort(key=lambda x: x['score'], reverse=True)
+    return scored_projects[:top_k]
 
 
 async def stream_rag_response(

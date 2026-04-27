@@ -9,4 +9,6 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ENABLE_FAISS_WARMUP
+        value: "false"
+      - key: USE_SIMPLE_SEARCH
         value: "true"
