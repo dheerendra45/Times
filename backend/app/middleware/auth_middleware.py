@@ -13,25 +13,29 @@ from app.config import settings
 from app.redis_client import store_session, get_session, delete_session
 
 security = HTTPBearer()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Configure bcrypt to not raise error on truncation
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=False)
 
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt. Truncate to 72 bytes max."""
     # Bcrypt has a max password length of 72 bytes
-    # Encode and truncate at byte level to ensure we don't exceed 72 bytes
+    # Ensure password doesn't exceed 72 bytes when encoded
     password_bytes = password.encode('utf-8')
     if len(password_bytes) > 72:
-        # Truncate to 72 bytes, ensuring we don't break multi-byte characters
+        # Truncate at byte level and decode safely
         password_bytes = password_bytes[:72]
-        # Find the last complete UTF-8 character
-        while len(password_bytes) > 0:
+        # Remove trailing bytes that might be incomplete UTF-8 sequences
+        while password_bytes:
             try:
                 password = password_bytes.decode('utf-8')
                 break
             except UnicodeDecodeError:
-                # Remove last byte and try again
                 password_bytes = password_bytes[:-1]
+        if not password_bytes:
+            # Extreme edge case: fallback to character truncation
+            password = password[:72]
+    
     return pwd_context.hash(password)
 
 
@@ -42,12 +46,15 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     password_bytes = plain_password.encode('utf-8')
     if len(password_bytes) > 72:
         password_bytes = password_bytes[:72]
-        while len(password_bytes) > 0:
+        while password_bytes:
             try:
                 plain_password = password_bytes.decode('utf-8')
                 break
             except UnicodeDecodeError:
                 password_bytes = password_bytes[:-1]
+        if not password_bytes:
+            plain_password = plain_password[:72]
+    
     return pwd_context.verify(plain_password, hashed_password)
 
 
