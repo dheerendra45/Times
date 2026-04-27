@@ -3,11 +3,18 @@
 import os
 import json
 import asyncio
-import numpy as np
 from typing import AsyncGenerator
 
 from app.config import settings
 from app.database import get_db
+
+# Optional imports for FAISS (not needed when USE_SIMPLE_SEARCH=true)
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    print("⚠️  numpy not installed - FAISS disabled")
 
 # ═══════════════════════════════════════════════════════════════════
 # Lazy-loaded globals
@@ -28,21 +35,29 @@ def _get_embedding_model():
     """Lazy-load the SentenceTransformer model."""
     global _embedding_model
     if _embedding_model is None:
-        from sentence_transformers import SentenceTransformer
-        _embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
-        print(f"✅ Loaded embedding model: {settings.EMBEDDING_MODEL}")
+        try:
+            from sentence_transformers import SentenceTransformer
+            _embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL)
+            print(f"✅ Loaded embedding model: {settings.EMBEDDING_MODEL}")
+        except ImportError:
+            print("⚠️  sentence-transformers not installed - FAISS disabled")
+            return None
     return _embedding_model
 
 
-def _embed_text(text: str) -> np.ndarray:
+def _embed_text(text: str):
     """Embed a single text string."""
     model = _get_embedding_model()
+    if model is None:
+        return None
     return model.encode([text], normalize_embeddings=True)[0]
 
 
-def _embed_texts(texts: list[str]) -> np.ndarray:
+def _embed_texts(texts: list[str]):
     """Embed a batch of text strings."""
     model = _get_embedding_model()
+    if model is None:
+        return None
     return model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
 
 

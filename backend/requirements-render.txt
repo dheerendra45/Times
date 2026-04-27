@@ -1,0 +1,21 @@
+# Lightweight requirements for Render free tier (512MB RAM)
+# This skips FAISS and sentence-transformers to save memory
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+motor==3.5.0
+pymongo==4.8.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+pydantic==2.7.4
+pydantic[email]==2.7.4
+python-dotenv==1.0.1
+python-multipart==0.0.9
+
+# LLM Provider - Mistral via OpenAI-compatible API
+openai==1.40.0
+httpx==0.27.2
+
+# NO FAISS or sentence-transformers - uses simple MongoDB search instead
+# NO Redis - not needed on free tier
+# NO Google Generative AI - only using Mistral

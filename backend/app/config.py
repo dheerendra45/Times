@@ -51,8 +51,7 @@ class Settings:
     FAISS_INDEX_PATH: str = os.getenv("FAISS_INDEX_PATH", "./faiss_index/hackathon.index")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "paraphrase-MiniLM-L3-v2")  # Lighter model for low memory
     SIMILARITY_THRESHOLD: float = float(os.getenv("SIMILARITY_THRESHOLD", "0.35"))
-    ENABLE_FAISS_WARMUP: bool = os.getenv("ENABLE_FAISS_WARMUP", "false").lower() == "true"
-    USE_SIMPLE_SEARCH: bool = os.getenv("USE_SIMPLE_SEARCH", "true").lower() == "true"  # Skip FAISS on low memory
+    ENABLE_FAISS_WARMUP: bool = os.getenv("ENABLE_FAISS_WARMUP", "false").lower() == "true"    USE_SIMPLE_SEARCH: bool = os.getenv("USE_SIMPLE_SEARCH", "true").lower() == "true"  # Skip FAISS on low-memory hosts    USE_SIMPLE_SEARCH: bool = os.getenv("USE_SIMPLE_SEARCH", "true").lower() == "true"  # Skip FAISS on low memory
 
     # ─── App ───
     CORS_ORIGINS: list[str] = (
