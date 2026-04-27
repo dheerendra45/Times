@@ -54,7 +54,10 @@ class Settings:
     ENABLE_FAISS_WARMUP: bool = os.getenv("ENABLE_FAISS_WARMUP", "false").lower() == "true"
 
     # ─── App ───
-    CORS_ORIGINS: list[str] = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    CORS_ORIGINS: list[str] = (
+        os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") +
+        ["https://times-five-psi.vercel.app"]  # Hardcoded production frontend
+    )
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
 
 
