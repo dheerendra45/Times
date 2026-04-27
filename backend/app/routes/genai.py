@@ -37,39 +37,50 @@ async def chat(
     current_user: dict = Depends(get_current_user)
 ):
     """RAG-powered chat endpoint with SSE streaming and history persistence."""
-    await rate_limit_chat(current_user["user_id"])
+    try:
+        await rate_limit_chat(current_user["user_id"])
 
-    if not data.query or len(data.query.strip()) < 2:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Query must be at least 2 characters",
+        if not data.query or len(data.query.strip()) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Query must be at least 2 characters",
+            )
+
+        # Get or create session
+        session_id = data.session_id or await get_or_create_active_session(
+            current_user["user_id"],
+            data.project_id
         )
 
-    # Get or create session
-    session_id = data.session_id or await get_or_create_active_session(
-        current_user["user_id"],
-        data.project_id
-    )
+        # Save user message to database
+        await add_message_to_session(session_id, "user", data.query)
 
-    # Save user message to database
-    await add_message_to_session(session_id, "user", data.query)
-
-    return StreamingResponse(
-        stream_rag_response(
-            data.query,
-            data.project_context,
-            data.history,
-            session_id,
-            current_user["user_id"]
-        ),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "X-Session-ID": session_id,  # Return session ID in header
-        },
-    )
+        return StreamingResponse(
+            stream_rag_response(
+                data.query,
+                data.project_context,
+                data.history,
+                session_id,
+                current_user["user_id"]
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Session-ID": session_id,  # Return session ID in header
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Chat endpoint error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Chat error: {str(e)}"
+        )
 
 
 @router.get("/suggestions")

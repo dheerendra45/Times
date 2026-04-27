@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useAuthStore } from "./authStore";
 
 const rawBaseURL = (
   import.meta.env.VITE_API_BASE_URL || "https://times-1vx0.onrender.com"
@@ -9,6 +10,24 @@ const apiBaseURL = sanitizedBaseURL
     ? sanitizedBaseURL
     : `${sanitizedBaseURL}/api`
   : "https://times-1vx0.onrender.com/api";
+
+// Helper to refresh token if needed
+async function getValidToken() {
+  const authStore = useAuthStore.getState();
+  let token = authStore.accessToken;
+
+  if (!token) {
+    // Try to refresh first
+    try {
+      await authStore.refreshToken();
+      token = useAuthStore.getState().accessToken;
+    } catch {
+      return null;
+    }
+  }
+
+  return token;
+}
 
 export const useChatStore = create((set, get) => ({
   messages: [],
@@ -71,16 +90,19 @@ export const useChatStore = create((set, get) => ({
 
     set({ isStreaming: true, error: null });
 
+    // Get a valid token (refresh if needed)
+    let token = accessToken || (await getValidToken());
+
     try {
       const headers = {
         "Content-Type": "application/json",
       };
 
-      if (accessToken) {
-        headers["Authorization"] = `Bearer ${accessToken}`;
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${apiBaseURL}/genai/chat`, {
+      let response = await fetch(`${apiBaseURL}/genai/chat`, {
         method: "POST",
         headers,
         credentials: "include",
@@ -95,6 +117,38 @@ export const useChatStore = create((set, get) => ({
             .slice(-8),
         }),
       });
+
+      // Handle 401 - try to refresh token and retry
+      if (response.status === 401) {
+        try {
+          await useAuthStore.getState().refreshToken();
+          token = useAuthStore.getState().accessToken;
+
+          if (token) {
+            headers["Authorization"] = `Bearer ${token}`;
+            response = await fetch(`${apiBaseURL}/genai/chat`, {
+              method: "POST",
+              headers,
+              credentials: "include",
+              body: JSON.stringify({
+                query,
+                project_context: projectContext,
+                project_id: projectId,
+                session_id: sessionId,
+                history: [...priorMessages, { role: "user", content: query }]
+                  .filter((m) => m?.role === "user" || m?.role === "assistant")
+                  .map((m) => ({
+                    role: m.role,
+                    content: String(m.content || ""),
+                  }))
+                  .slice(-8),
+              }),
+            });
+          }
+        } catch (refreshErr) {
+          throw new Error("Session expired. Please login again.");
+        }
+      }
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
