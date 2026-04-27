@@ -17,17 +17,38 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
+    """Hash a password using bcrypt. Truncate to 72 bytes max."""
     # Bcrypt has a max password length of 72 bytes
-    password_bytes = password.encode('utf-8')[:72]
-    return pwd_context.hash(password_bytes.decode('utf-8', errors='ignore'))
+    # Encode and truncate at byte level to ensure we don't exceed 72 bytes
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        # Truncate to 72 bytes, ensuring we don't break multi-byte characters
+        password_bytes = password_bytes[:72]
+        # Find the last complete UTF-8 character
+        while len(password_bytes) > 0:
+            try:
+                password = password_bytes.decode('utf-8')
+                break
+            except UnicodeDecodeError:
+                # Remove last byte and try again
+                password_bytes = password_bytes[:-1]
+    return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
+    """Verify a password against its hash. Truncate to 72 bytes max."""
     # Bcrypt has a max password length of 72 bytes
-    password_bytes = plain_password.encode('utf-8')[:72]
-    return pwd_context.verify(password_bytes.decode('utf-8', errors='ignore'), hashed_password)
+    # Apply same truncation logic as hash_password
+    password_bytes = plain_password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+        while len(password_bytes) > 0:
+            try:
+                plain_password = password_bytes.decode('utf-8')
+                break
+            except UnicodeDecodeError:
+                password_bytes = password_bytes[:-1]
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(user_id: str, email: str) -> str:
