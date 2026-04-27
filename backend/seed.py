@@ -189,25 +189,14 @@ async def seed():
     # Insert users
     user_ids = {}
     for u in SAMPLE_USERS:
-        # Truncate password to 72 bytes (bcrypt limitation)
-        password_bytes = u["password"].encode('utf-8')
-        if len(password_bytes) > 72:
-            password_bytes = password_bytes[:72]
-            # Ensure we don't break multi-byte UTF-8 characters
-            while len(password_bytes) > 0:
-                try:
-                    password_truncated = password_bytes.decode('utf-8')
-                    break
-                except UnicodeDecodeError:
-                    password_bytes = password_bytes[:-1]
-        else:
-            password_truncated = u["password"]
+        # Simple password truncation
+        password = u["password"][:72] if len(u["password"]) > 72 else u["password"]
         
         doc = {
             "username": u["username"],
             "email": u["email"],
             "full_name": u["full_name"],
-            "hashed_password": pwd_context.hash(password_truncated),
+            "hashed_password": pwd_context.hash(password),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
             "is_active": True,
