@@ -35,9 +35,15 @@ async def lifespan(app: FastAPI):
 
     await connect_redis()  # optional — warns and continues if unavailable
 
-    # Warm FAISS only when explicitly enabled (disabled by default on low-memory hosts).
+    # Warm FAISS: build synchronously on first deploy, background task on restarts
     if db_ready and settings.ENABLE_FAISS_WARMUP:
-        asyncio.create_task(_warmup_faiss_index())
+        print("🔨 Building FAISS index on startup...")
+        try:
+            from app.services.genai_service import build_faiss_index
+            await build_faiss_index()
+            print("✅ FAISS index ready")
+        except Exception as e:
+            print(f"⚠️  FAISS warmup failed: {e}")
 
     print("🚀 Hackathon Portal API is ready")
     yield

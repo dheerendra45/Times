@@ -260,74 +260,116 @@ async def stream_rag_response(
 async def _stream_gemini(system_prompt: str, user_prompt: str) -> AsyncGenerator[str, None]:
     """Stream response from Google Gemini."""
     import google.generativeai as genai
+    
+    if not settings.GOOGLE_API_KEY:
+        yield "Error: Google API key not configured. Please contact the administrator."
+        return
 
-    genai.configure(api_key=settings.GOOGLE_API_KEY)
-    model = genai.GenerativeModel(
-        "gemini-1.5-flash",
-        system_instruction=system_prompt,
-    )
+    try:
+        genai.configure(api_key=settings.GOOGLE_API_KEY)
+        model = genai.GenerativeModel(
+            "gemini-1.5-flash",
+            system_instruction=system_prompt,
+        )
 
-    response = await asyncio.get_event_loop().run_in_executor(
-        None,
-        lambda: model.generate_content(user_prompt, stream=True),
-    )
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: model.generate_content(user_prompt, stream=True),
+        )
 
-    for chunk in response:
-        if chunk.text:
-            yield chunk.text
-            await asyncio.sleep(0.01)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+                await asyncio.sleep(0.01)
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Gemini API error: {error_msg}")
+        if "401" in error_msg or "unauthorized" in error_msg.lower() or "api_key" in error_msg.lower():
+            yield "\n\n⚠️ API authentication failed. Please check the Google API key configuration."
+        elif "quota" in error_msg.lower() or "rate" in error_msg.lower():
+            yield "\n\n⚠️ Quota exceeded. Please try again later."
+        else:
+            yield f"\n\n⚠️ Unable to generate response: {error_msg}"
 
 
 async def _stream_openai(system_prompt: str, user_prompt: str) -> AsyncGenerator[str, None]:
     """Stream response from OpenAI GPT-4o."""
     from openai import OpenAI
+    
+    if not settings.OPENAI_API_KEY:
+        yield "Error: OpenAI API key not configured. Please contact the administrator."
+        return
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    try:
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-    stream = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        stream=True,
-        max_tokens=1500,
-        temperature=0.7,
-    )
+        stream = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            stream=True,
+            max_tokens=1500,
+            temperature=0.7,
+        )
 
-    for chunk in stream:
-        delta = chunk.choices[0].delta
-        if delta.content:
-            yield delta.content
-            await asyncio.sleep(0.01)
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+                await asyncio.sleep(0.01)
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ OpenAI API error: {error_msg}")
+        if "401" in error_msg or "unauthorized" in error_msg.lower():
+            yield "\n\n⚠️ API authentication failed. Please check the OpenAI API key configuration."
+        elif "rate_limit" in error_msg.lower():
+            yield "\n\n⚠️ Rate limit exceeded. Please try again in a moment."
+        else:
+            yield f"\n\n⚠️ Unable to generate response: {error_msg}"
 
 
 async def _stream_mistral(system_prompt: str, user_prompt: str) -> AsyncGenerator[str, None]:
     """Stream response from Mistral AI."""
     from openai import OpenAI
+    
+    if not settings.MISTRAL_API_KEY:
+        yield "Error: Mistral API key not configured. Please contact the administrator."
+        return
 
-    # Mistral uses OpenAI-compatible API
-    client = OpenAI(
-        api_key=settings.MISTRAL_API_KEY,
-        base_url="https://api.mistral.ai/v1"
-    )
+    try:
+        # Mistral uses OpenAI-compatible API
+        client = OpenAI(
+            api_key=settings.MISTRAL_API_KEY,
+            base_url="https://api.mistral.ai/v1"
+        )
 
-    stream = client.chat.completions.create(
-        model="mistral-large-latest",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        stream=True,
-        max_tokens=1500,
-        temperature=0.7,
-    )
+        stream = client.chat.completions.create(
+            model="mistral-large-latest",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            stream=True,
+            max_tokens=1500,
+            temperature=0.7,
+        )
 
-    for chunk in stream:
-        delta = chunk.choices[0].delta
-        if delta.content:
-            yield delta.content
-            await asyncio.sleep(0.01)
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield delta.content
+                await asyncio.sleep(0.01)
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Mistral API error: {error_msg}")
+        if "401" in error_msg or "unauthorized" in error_msg.lower():
+            yield "\n\n⚠️ API authentication failed. Please check the Mistral API key configuration."
+        elif "rate_limit" in error_msg.lower():
+            yield "\n\n⚠️ Rate limit exceeded. Please try again in a moment."
+        else:
+            yield f"\n\n⚠️ Unable to generate response: {error_msg}"
 
 
 async def get_suggested_questions(project_id: str = None) -> list[str]:
