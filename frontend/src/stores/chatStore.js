@@ -48,7 +48,12 @@ export const useChatStore = create((set, get) => ({
     });
   },
 
-  sendMessage: async (query, projectContext = null, projectId = null, accessToken = null) => {
+  sendMessage: async (
+    query,
+    projectContext = null,
+    projectId = null,
+    accessToken = null,
+  ) => {
     const priorMessages = get().messages;
     const sessionId = get().currentSessionId;
 
@@ -69,7 +74,7 @@ export const useChatStore = create((set, get) => ({
       const headers = {
         "Content-Type": "application/json",
       };
-      
+
       if (accessToken) {
         headers["Authorization"] = `Bearer ${accessToken}`;
       }
@@ -140,7 +145,22 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  fetchSuggestions: async (projectId = null) => {, currentSessionId: null }),
+  fetchSuggestions: async (projectId = null) => {
+    try {
+      const params = projectId ? `?project_id=${projectId}` : "";
+      const response = await fetch(`${apiBaseURL}/genai/suggestions${params}`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        set({ suggestions: data });
+      }
+    } catch {
+      // Silently fail for suggestions
+    }
+  },
+
+  clearChat: () => set({ messages: [], error: null, currentSessionId: null }),
   clearError: () => set({ error: null }),
 
   // Chat history management
@@ -153,10 +173,13 @@ export const useChatStore = create((set, get) => ({
       }
 
       const params = projectId ? `?project_id=${projectId}` : "";
-      const response = await fetch(`${apiBaseURL}/genai/chat/sessions${params}`, {
-        headers,
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${apiBaseURL}/genai/chat/sessions${params}`,
+        {
+          headers,
+          credentials: "include",
+        },
+      );
 
       if (response.ok) {
         const sessions = await response.json();
@@ -176,10 +199,13 @@ export const useChatStore = create((set, get) => ({
         headers["Authorization"] = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch(`${apiBaseURL}/genai/chat/sessions/${sessionId}`, {
-        headers,
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${apiBaseURL}/genai/chat/sessions/${sessionId}`,
+        {
+          headers,
+          credentials: "include",
+        },
+      );
 
       if (response.ok) {
         const session = await response.json();
@@ -201,18 +227,21 @@ export const useChatStore = create((set, get) => ({
         headers["Authorization"] = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch(`${apiBaseURL}/genai/chat/sessions/${sessionId}`, {
-        method: "DELETE",
-        headers,
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${apiBaseURL}/genai/chat/sessions/${sessionId}`,
+        {
+          method: "DELETE",
+          headers,
+          credentials: "include",
+        },
+      );
 
       if (response.ok) {
         // Remove from local state
         set((state) => ({
           chatSessions: state.chatSessions.filter((s) => s.id !== sessionId),
         }));
-        
+
         // Clear current session if it was deleted
         if (get().currentSessionId === sessionId) {
           set({ messages: [], currentSessionId: null });
@@ -221,20 +250,5 @@ export const useChatStore = create((set, get) => ({
     } catch {
       set({ error: "Failed to delete chat session" });
     }
-  }
-      const params = projectId ? `?project_id=${projectId}` : "";
-      const response = await fetch(`${apiBaseURL}/genai/suggestions${params}`, {
-        credentials: "include",
-      });
-      if (response.ok) {
-        const data = await response.json();
-        set({ suggestions: data });
-      }
-    } catch {
-      // Silently fail for suggestions
-    }
   },
-
-  clearChat: () => set({ messages: [], error: null }),
-  clearError: () => set({ error: null }),
 }));

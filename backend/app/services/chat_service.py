@@ -41,21 +41,39 @@ async def add_message_to_session(
         "sources": sources or []
     }
     
-    update_data = {
-        "$push": {"messages": message},
-        "$set": {"updated_at": datetime.utcnow()}
-    }
-    
-    # Auto-generate title from first user message
-    session = await db.chat_sessions.find_one({"_id": ObjectId(session_id)})
-    if session and not session.get("title") and role == "user":
+    # Simple approach: always push message, conditionally set title for first user message
+    if role == "user":
         title = content[:60] + "..." if len(content) > 60 else content
-        update_data["$set"]["title"] = title
-    
-    await db.chat_sessions.update_one(
-        {"_id": ObjectId(session_id)},
-        update_data
-    )
+        # Try to set title only if it doesn't exist (single atomic operation)
+        result = await db.chat_sessions.update_one(
+            {
+                "_id": ObjectId(session_id),
+                "title": {"$in": [None, ""]}  # Match if title is None or empty
+            },
+            {
+                "$push": {"messages": message},
+                "$set": {"updated_at": datetime.utcnow(), "title": title}
+            }
+        )
+        
+        # If title already exists (matched_count == 0), update without setting title
+        if result.matched_count == 0:
+            await db.chat_sessions.update_one(
+                {"_id": ObjectId(session_id)},
+                {
+                    "$push": {"messages": message},
+                    "$set": {"updated_at": datetime.utcnow()}
+                }
+            )
+    else:
+        # For assistant messages, simple update
+        await db.chat_sessions.update_one(
+            {"_id": ObjectId(session_id)},
+            {
+                "$push": {"messages": message},
+                "$set": {"updated_at": datetime.utcnow()}
+            }
+        )
 
 
 async def get_user_chat_sessions(
