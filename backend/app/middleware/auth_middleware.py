@@ -76,7 +76,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
     """
-    FastAPI dependency — extracts and validates the current user from the
+    FastAPI dependency - extracts and validates the current user from the
     Bearer token in the Authorization header.
     """
     payload = decode_token(credentials.credentials)
