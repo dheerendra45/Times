@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import connect_db, close_db
 from app.redis_client import connect_redis, close_redis
-from app.routes import projects, analytics, genai
+from app.routes import auth, projects, analytics, genai
 
 
 async def _warmup_faiss_index() -> None:
@@ -68,6 +68,7 @@ app.add_middleware(
 app.include_router(projects.router)
 app.include_router(analytics.router)
 app.include_router(genai.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

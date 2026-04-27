@@ -15,6 +15,9 @@ export const useChatStore = create((set, get) => ({
   isStreaming: false,
   suggestions: [],
   error: null,
+  currentSessionId: null,
+  chatSessions: [],
+  loadingSessions: false,
 
   addMessage: (message) => {
     set((state) => ({ messages: [...state.messages, message] }));
@@ -45,7 +48,10 @@ export const useChatStore = create((set, get) => ({
     });
   },
 
-  sendMessage: async (query, projectContext = null) => {
+  sendMessage: async (query, projectContext = null, projectId = null, accessToken = null) => {
+    const priorMessages = get().messages;
+    const sessionId = get().currentSessionId;
+
     // Add user message
     get().addMessage({ role: "user", content: query, timestamp: new Date() });
 
@@ -60,13 +66,28 @@ export const useChatStore = create((set, get) => ({
     set({ isStreaming: true, error: null });
 
     try {
+      const headers = {
+        "Content-Type": "application/json",
+      };
+      
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+
       const response = await fetch(`${apiBaseURL}/genai/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         credentials: "include",
-        body: JSON.stringify({ query, project_context: projectContext }),
+        body: JSON.stringify({
+          query,
+          project_context: projectContext,
+          project_id: projectId,
+          session_id: sessionId,
+          history: [...priorMessages, { role: "user", content: query }]
+            .filter((m) => m?.role === "user" || m?.role === "assistant")
+            .map((m) => ({ role: m.role, content: String(m.content || "") }))
+            .slice(-8),
+        }),
       });
 
       if (!response.ok) {
@@ -74,6 +95,12 @@ export const useChatStore = create((set, get) => ({
         throw new Error(
           errData.detail || `Request failed (${response.status})`,
         );
+      }
+
+      // Extract session ID from response header
+      const newSessionId = response.headers.get("X-Session-ID");
+      if (newSessionId && !sessionId) {
+        set({ currentSessionId: newSessionId });
       }
 
       const reader = response.body.getReader();
@@ -113,8 +140,88 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  fetchSuggestions: async (projectId = null) => {
+  fetchSuggestions: async (projectId = null) => {, currentSessionId: null }),
+  clearError: () => set({ error: null }),
+
+  // Chat history management
+  fetchChatSessions: async (projectId = null, accessToken = null) => {
+    set({ loadingSessions: true });
     try {
+      const headers = {};
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+
+      const params = projectId ? `?project_id=${projectId}` : "";
+      const response = await fetch(`${apiBaseURL}/genai/chat/sessions${params}`, {
+        headers,
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const sessions = await response.json();
+        set({ chatSessions: sessions, loadingSessions: false });
+      } else {
+        set({ loadingSessions: false });
+      }
+    } catch {
+      set({ loadingSessions: false });
+    }
+  },
+
+  loadChatSession: async (sessionId, accessToken = null) => {
+    try {
+      const headers = {};
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(`${apiBaseURL}/genai/chat/sessions/${sessionId}`, {
+        headers,
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const session = await response.json();
+        set({
+          messages: session.messages || [],
+          currentSessionId: sessionId,
+          error: null,
+        });
+      }
+    } catch (err) {
+      set({ error: "Failed to load chat session" });
+    }
+  },
+
+  deleteChatSession: async (sessionId, accessToken = null) => {
+    try {
+      const headers = {};
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(`${apiBaseURL}/genai/chat/sessions/${sessionId}`, {
+        method: "DELETE",
+        headers,
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        // Remove from local state
+        set((state) => ({
+          chatSessions: state.chatSessions.filter((s) => s.id !== sessionId),
+        }));
+        
+        // Clear current session if it was deleted
+        if (get().currentSessionId === sessionId) {
+          set({ messages: [], currentSessionId: null });
+        }
+      }
+    } catch {
+      set({ error: "Failed to delete chat session" });
+    }
+  }
       const params = projectId ? `?project_id=${projectId}` : "";
       const response = await fetch(`${apiBaseURL}/genai/suggestions${params}`, {
         credentials: "include",

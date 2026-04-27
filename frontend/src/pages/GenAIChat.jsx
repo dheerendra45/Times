@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { useChatStore } from "../stores/chatStore";
+import { useAuthStore } from "../stores/authStore";
 import { useProjectStore } from "../stores/projectStore";
 import ChatBubble from "../components/ChatBubble";
 import { ChatBubbleSkeleton } from "../components/Skeleton";
@@ -10,6 +11,8 @@ import {
   HiOutlineTrash,
   HiOutlineArrowPath,
   HiMiniStop,
+  HiOutlineClock,
+  HiOutlineChevronLeft,
 } from "react-icons/hi2";
 
 function TypingIndicator() {
@@ -35,6 +38,7 @@ function TypingIndicator() {
 
 export default function GenAIChat() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const projectId = searchParams.get("project");
   const {
     messages,
@@ -45,16 +49,33 @@ export default function GenAIChat() {
     fetchSuggestions,
     clearChat,
     clearError,
+    chatSessions,
+    loadingSessions,
+    fetchChatSessions,
+    loadChatSession,
+    deleteChatSession,
   } = useChatStore();
   const { currentProject, fetchProjectById } = useProjectStore();
+  const { accessToken, isAuthenticated } = useAuthStore();
   const [input, setInput] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    fetchSuggestions(projectId);
+    if (!isAuthenticated) {
+      navigate("/login?redirect=/chat");
+    }
+  }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    if (isAuthenticated && accessToken) {
+      fetchSuggestions(projectId);
+      fetchChatSessions(projectId, accessToken);
+    }
     if (projectId) fetchProjectById(projectId).catch(() => {});
-  }, [projectId]);
+  }, [projectId, isAuthenticated, accessToken]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -69,7 +90,7 @@ export default function GenAIChat() {
     if (currentProject && projectId) {
       context = `Title: ${currentProject.title}\nProblem: ${currentProject.problem_statement}\nSolution: ${currentProject.solution}\nTech: ${currentProject.tech_stack?.join(", ")}`;
     }
-    await sendMessage(query, context);
+    await sendMessage(query, context, projectId, accessToken);
   };
 
   const handleKeyDown = (e) => {
@@ -84,8 +105,77 @@ export default function GenAIChat() {
     textareaRef.current?.focus();
   };
 
+  const handleLoadSession = async (sessionId) => {
+    await loadChatSession(sessionId, accessToken);
+    setShowHistory(false);
+  };
+
+  const handleDeleteSession = async (sessionId, e) => {
+    e.stopPropagation();
+    if (confirm("Delete this chat session?")) {
+      await deleteChatSession(sessionId, accessToken);
+    }
+  };
+
+  if (!isAuthenticated) {
+    return null; // Redirecting...
+  }
+
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex h-[calc(100vh-4rem)]">
+      {/* Chat History Sidebar */}
+      {showHistory && (
+        <div className="w-80 border-r border-gray-200 bg-white overflow-y-auto">
+          <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+            <h3 className="font-bold text-gray-900">Chat History</h3>
+            <button
+              onClick={() => setShowHistory(false)}
+              className="p-2 rounded-lg hover:bg-gray-100"
+            >
+              <HiOutlineChevronLeft className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-4 space-y-2">
+            {loadingSessions && (
+              <div className="text-center text-gray-500 py-4">Loading...</div>
+            )}
+            {!loadingSessions && chatSessions.length === 0 && (
+              <div className="text-center text-gray-500 py-4">No chat history yet</div>
+            )}
+            {chatSessions.map((session) => (
+              <div
+                key={session.id}
+                onClick={() => handleLoadSession(session.id)}
+                className="group p-3 rounded-lg border border-gray-200 hover:border-primary-400 hover:bg-primary-50 cursor-pointer transition-all"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {session.title || session.preview || "Untitled Chat"}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {session.message_count} messages
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                      <HiOutlineClock className="w-3 h-3" />
+                      {new Date(session.updated_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteSession(session.id, e)}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-rose-100 text-gray-400 hover:text-rose-600 transition-all"
+                  >
+                    <HiOutlineTrash className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
       {/* Header */}
       <div className="border-b border-gray-200 bg-white/98 backdrop-blur-xl px-4 sm:px-6 py-4 shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-between">

@@ -18,6 +18,12 @@ _project_ids: list[str] = []
 _project_texts: list[str] = []
 
 
+def _faiss_metadata_path() -> str:
+    """Path for FAISS companion metadata file."""
+    base, _ = os.path.splitext(settings.FAISS_INDEX_PATH)
+    return f"{base}.meta.json"
+
+
 def _get_embedding_model():
     """Lazy-load the SentenceTransformer model."""
     global _embedding_model
@@ -89,8 +95,44 @@ async def build_faiss_index() -> int:
     os.makedirs(os.path.dirname(settings.FAISS_INDEX_PATH) or ".", exist_ok=True)
     faiss.write_index(index, settings.FAISS_INDEX_PATH)
 
+    with open(_faiss_metadata_path(), "w", encoding="utf-8") as f:
+        json.dump({"project_ids": ids, "project_texts": texts}, f)
+
     print(f"✅ FAISS index built with {len(ids)} projects (dim={dim})")
     return len(ids)
+
+
+async def _ensure_faiss_ready() -> None:
+    """Load FAISS index/metadata from disk or rebuild if needed."""
+    import faiss
+
+    global _faiss_index, _project_ids, _project_texts
+
+    if _faiss_index is not None and _project_ids and _project_texts:
+        return
+
+    metadata_path = _faiss_metadata_path()
+    if os.path.exists(settings.FAISS_INDEX_PATH) and os.path.exists(metadata_path):
+        try:
+            index = faiss.read_index(settings.FAISS_INDEX_PATH)
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+
+            ids = metadata.get("project_ids") or []
+            texts = metadata.get("project_texts") or []
+
+            if len(ids) != len(texts) or index.ntotal != len(ids):
+                raise ValueError("FAISS metadata does not match index size")
+
+            _faiss_index = index
+            _project_ids = ids
+            _project_texts = texts
+            print(f"✅ Loaded FAISS index from disk with {len(ids)} projects")
+            return
+        except Exception as e:
+            print(f"⚠️  Failed to load FAISS index from disk: {e}")
+
+    await build_faiss_index()
 
 
 async def search_similar_projects(query: str, top_k: int = 5) -> list[dict]:
@@ -99,6 +141,8 @@ async def search_similar_projects(query: str, top_k: int = 5) -> list[dict]:
     Returns list of {project_id, text, score}.
     """
     import faiss
+
+    await _ensure_faiss_ready()
 
     if _faiss_index is None or len(_project_ids) == 0:
         return []
@@ -122,10 +166,16 @@ async def search_similar_projects(query: str, top_k: int = 5) -> list[dict]:
     return results
 
 
-async def stream_rag_response(query: str, project_context: str = None) -> AsyncGenerator[str, None]:
+async def stream_rag_response(
+    query: str,
+    project_context: str = None,
+    history: list[dict[str, str]] | None = None,
+    session_id: str = None,
+    user_id: str = None,
+) -> AsyncGenerator[str, None]:
     """
     RAG pipeline: embed query → FAISS top-5 → build prompt → stream LLM response.
-    Yields SSE-formatted chunks.
+    Yields SSE-formatted chunks and saves assistant response to chat history.
     """
     # Step 1: Search for relevant projects
     similar = await search_similar_projects(query, top_k=5)
@@ -158,24 +208,51 @@ async def stream_rag_response(query: str, project_context: str = None) -> AsyncG
     else:
         user_prompt = f"User Question: {query}\n\n(No specific project context available — provide a general helpful response)"
 
-    # Step 4: Stream from LLM
+    if history:
+        recent_turns = [
+            h for h in history[-8:] if h.get("role") in {"user", "assistant"} and h.get("content")
+        ]
+        if recent_turns:
+            convo = "\n".join(
+                f"{turn['role'].capitalize()}: {turn['content']}" for turn in recent_turns
+            )
+            user_prompt = f"Recent Conversation:\n{convo}\n\n{user_prompt}"
+
+    # Step 4: Stream from LLM and collect response
+    full_response = ""
     try:
         if settings.LLM_PROVIDER == "gemini":
             async for chunk in _stream_gemini(system_prompt, user_prompt):
+                full_response += chunk
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
         elif settings.LLM_PROVIDER == "mistral":
             async for chunk in _stream_mistral(system_prompt, user_prompt):
+                full_response += chunk
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
         else:
             async for chunk in _stream_openai(system_prompt, user_prompt):
+                full_response += chunk
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
     except Exception as e:
-        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+        error_msg = str(e)
+        full_response = f"[Error: {error_msg}]"
+        yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
 
     # Send sources
+    sources_list = []
     if high_similarity:
-        sources = [{"project_id": s["project_id"], "score": round(s["score"], 3)} for s in high_similarity[:3]]
-        yield f"data: {json.dumps({'type': 'sources', 'content': sources})}\n\n"
+        sources_list = [{"project_id": s["project_id"], "score": round(s["score"], 3)} for s in high_similarity[:3]]
+        yield f"data: {json.dumps({'type': 'sources', 'content': sources_list})}\n\n"
+
+    # Save assistant response to database
+    if session_id and user_id and full_response:
+        from app.services.chat_service import add_message_to_session
+        await add_message_to_session(
+            session_id,
+            "assistant",
+            full_response,
+            sources_list if sources_list else None
+        )
 
     yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

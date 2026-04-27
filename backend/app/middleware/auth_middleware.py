@@ -96,8 +96,8 @@ def set_refresh_cookie(response: Response, token: str) -> None:
         key="refresh_token",
         value=token,
         httponly=True,
-        secure=False,  # Set True in production with HTTPS
-        samesite="lax",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         path="/api/auth",
     )
@@ -105,4 +105,9 @@ def set_refresh_cookie(response: Response, token: str) -> None:
 
 def clear_refresh_cookie(response: Response) -> None:
     """Clear the refresh token cookie."""
-    response.delete_cookie(key="refresh_token", path="/api/auth")
+    response.delete_cookie(
+        key="refresh_token",
+        path="/api/auth",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+    )
