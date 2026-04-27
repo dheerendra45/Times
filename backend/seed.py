@@ -189,15 +189,11 @@ async def seed():
     # Insert users
     user_ids = {}
     for u in SAMPLE_USERS:
-        # Truncate password to 72 BYTES
-        password_bytes = u["password"].encode('utf-8')[:72]
-        password = password_bytes.decode('utf-8', errors='ignore')
-        
         doc = {
             "username": u["username"],
             "email": u["email"],
             "full_name": u["full_name"],
-            "hashed_password": pwd_context.hash(password),
+            "hashed_password": u["password"],  # No hashing
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
             "is_active": True,
