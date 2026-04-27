@@ -2,7 +2,7 @@ services:
   - type: web
     name: hackathon-portal-backend
     runtime: python
-    pythonVersion: 3.11.4
+    pythonVersion: "3.11"
     rootDir: backend
     plan: free
     buildCommand: pip install -r requirements.txt
