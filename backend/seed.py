@@ -189,8 +189,9 @@ async def seed():
     # Insert users
     user_ids = {}
     for u in SAMPLE_USERS:
-        # Simple password truncation
-        password = u["password"][:72] if len(u["password"]) > 72 else u["password"]
+        # Truncate password to 72 BYTES
+        password_bytes = u["password"].encode('utf-8')[:72]
+        password = password_bytes.decode('utf-8', errors='ignore')
         
         doc = {
             "username": u["username"],
